@@ -315,7 +315,7 @@ def selenium_get_fact_table_html() -> str:
 			city_state = driver.execute_script(
 				"const el = document.getElementById('city'); if (!el) return null; return {value: el.value, className: el.className};"
 			)
-			print('City state after pick:', city_state)
+			# print('City state after pick:', city_state)
 		except Exception:
 			pass
 		try:
@@ -343,7 +343,7 @@ def selenium_get_fact_table_html() -> str:
 			street_state = driver.execute_script(
 				"const el = document.getElementById('street'); if (!el) return null; return {disabled: !!el.disabled, className: el.className, value: el.value};"
 			)
-			print('Street state after city:', street_state)
+			# print('Street state after city:', street_state)
 		except Exception:
 			pass
 
