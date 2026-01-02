@@ -18,7 +18,9 @@ async def send_telegram_notification(message: str) -> None:
         except (FileNotFoundError, json.JSONDecodeError):
             pass
     
-    print(f"DEBUG: Token: {token[:10]}..., Chat ID: {chat_id}")
+    token_preview = (token[:10] + '...') if token else 'None'
+    chat_id_preview = (str(chat_id)[:10] + '...') if chat_id else 'None'
+    print(f"DEBUG: Token: {token_preview}, Chat ID: {chat_id_preview}")
     if not token or not chat_id:
         print("TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set, skipping Telegram notification")
         return

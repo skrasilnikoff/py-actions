@@ -36,7 +36,7 @@ DEFAULT_SMTP_HOST = "smtp.gmail.com"
 DEFAULT_SMTP_PORT = 465
 DEFAULT_SMTP_USE_SSL = True
 DEFAULT_SMTP_STARTTLS = False
-DEFAULT_STATE_FILE = os.environ.get("STATE_FILE", "")
+DEFAULT_STATE_FILE = "last_state.json"
 EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT", "")
 
 
