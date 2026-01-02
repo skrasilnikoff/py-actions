@@ -9,6 +9,8 @@ from email.message import EmailMessage
 import json
 import hashlib
 import subprocess
+import asyncio
+from telegram_notification import send_telegram_notification
 
 
 URL = "https://www.dtek-dnem.com.ua/ua/shutdowns"
@@ -18,13 +20,24 @@ CITY = os.environ.get("CITY", "")
 STREET = os.environ.get("STREET", "")
 HOUSE_NUM = os.environ.get("HOUSE_NUM", "")
 
+# Fallback to env_vars.json if not in environment
+if not CITY or not STREET or not HOUSE_NUM:
+    try:
+        with open("env_vars.json", "r") as f:
+            env_vars = json.load(f)
+        CITY = CITY or env_vars.get("CITY", "")
+        STREET = STREET or env_vars.get("STREET", "")
+        HOUSE_NUM = HOUSE_NUM or env_vars.get("HOUSE_NUM", "")
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
 # Hardcoded SMTP defaults (user must still provide SMTP_USER, SMTP_PASS, SMTP_FROM)
 DEFAULT_SMTP_HOST = "smtp.gmail.com"
 DEFAULT_SMTP_PORT = 465
 DEFAULT_SMTP_USE_SSL = True
 DEFAULT_SMTP_STARTTLS = False
-DEFAULT_STATE_FILE = os.environ.get("STATE_FILE", "last_state.json")
-EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT", "default@example.com")
+DEFAULT_STATE_FILE = os.environ.get("STATE_FILE", "")
+EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT", "")
 
 
 def parse_fact_table_to_slots(table_html: str) -> Optional[List[str]]:
@@ -632,9 +645,19 @@ def main() -> None:
 
 		# Send only if data changed since last run
 		try:
+			print(f"DEBUG: prev_md5: {prev_md5!r}, current_md5: {current_md5!r}")
 			if prev_md5 != current_md5:
 				print("Данные изменились (md5 differ), отправляю email")
-				send_off_intervals_via_email(EMAIL_RECIPIENT, off_ranges, date_str)
+				try:
+					send_off_intervals_via_email(EMAIL_RECIPIENT, off_ranges, date_str)
+				except Exception as e:
+					print(f"Ошибка при отправке email: {e}")
+				# Send Telegram notification
+				body = f"Интервалы отключения:\n" + "\n".join(f" - {r}" for r in off_ranges or ["Нет интервалов отключения"])
+				if date_str:
+					body = f"{date_str}\n{body}"
+				print(f"DEBUG: Sending Telegram message: {body}")
+				asyncio.run(send_telegram_notification(body))
 			else:
 				print("Данные не изменились (md5 equal) — письмо не отправлено")
 			

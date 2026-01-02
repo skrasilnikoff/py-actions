@@ -58,3 +58,6 @@ Thumbs.db
 
 # Selenium/webdriver cache
 dtek_autocomplete_*.html
+
+
+env_vars.json
