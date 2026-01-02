@@ -431,13 +431,9 @@ def selenium_get_fact_table_html() -> str:
 			# not critical, continue
 			pass
 
-		# Prefer active table
+		# Return the whole tables container so we can parse all dates (today/tomorrow)
 		html = driver.execute_script(
-			"""
-			const el = document.querySelector('.discon-fact-tables .discon-fact-table.active')
-					|| document.querySelector('.discon-fact-tables .discon-fact-table');
-			return el ? el.outerHTML : '';
-			"""
+			"const wrap = document.querySelector('.discon-fact-tables'); return wrap ? wrap.outerHTML : '';"
 		)
 		if not html:
 			raise RuntimeError("Fact table not found after filling form")
@@ -449,8 +445,16 @@ def selenium_get_fact_table_html() -> str:
 			pass
 
 
-def send_off_intervals_via_email(recipient: str, off_ranges: Optional[List[str]], date_str: Optional[str]) -> None:
+def send_off_intervals_via_email(
+	recipient: str,
+	results: Optional[List[dict]] = None,
+	off_ranges: Optional[List[str]] = None,
+	date_str: Optional[str] = None,
+) -> None:
 	"""Send the "Интервалы отключения" section via email.
+
+	Can accept either `results` (list of {date, off_ranges, slots}) to include multiple
+	dates, or the legacy `off_ranges` + `date_str` for a single-day message.
 
 	Reads SMTP settings from environment variables:
 	- SMTP_HOST (default: localhost)
@@ -460,11 +464,24 @@ def send_off_intervals_via_email(recipient: str, off_ranges: Optional[List[str]]
 	- SMTP_STARTTLS (if '1' calls starttls() before login)
 	"""
 	lines = ["Интервалы отключения:"]
-	if off_ranges:
-		for r in off_ranges:
-			lines.append(f" - {r}")
+	if results:
+		for res in results:
+			d = res.get('date') or ''
+			header = f"Дата: {d}" if d else "Дата: -"
+			lines.append("")
+			lines.append(header)
+			ors = res.get('off_ranges') or []
+			if ors:
+				for r in ors:
+					lines.append(f" - {r}")
+			else:
+				lines.append(" - Нет интервалов отключения")
 	else:
-		lines.append(" - Нет интервалов отключения")
+		if off_ranges:
+			for r in off_ranges:
+				lines.append(f" - {r}")
+		else:
+			lines.append(" - Нет интервалов отключения")
 	body = "\n".join(lines)
 
 	msg = EmailMessage()
@@ -579,13 +596,30 @@ def main() -> None:
 		except Exception:
 			return html
 
-	# normalize before parsing
-	table_html_norm = _normalize_table(table_html)
+	# Parse all .discon-fact-table entries (может быть сегодня и завтра)
+	soup_all = BeautifulSoup(table_html, "html.parser")
+	table_els = soup_all.select(".discon-fact-table")
+	results = []
+	for tbl in table_els:
+		rel = tbl.get("rel") or tbl.get("data-rel")
+		date_str_tbl = None
+		if rel:
+			try:
+				ts = int(rel)
+				date_str_tbl = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime('%Y-%m-%d')
+			except Exception:
+				date_str_tbl = None
+		tbl_html = _normalize_table(str(tbl))
+		slots = parse_fact_table_to_slots(tbl_html) or []
+		off_ranges_tbl = slots_to_ranges(slots, "off")
+		results.append({"date": date_str_tbl, "off_ranges": off_ranges_tbl, "slots": slots})
 
-	# Now parse classes into 48 half-hour slots and print intervals + visual table
-	slots = parse_fact_table_to_slots(table_html_norm)
-	if slots:
-		off_ranges = slots_to_ranges(slots, "off")
+	if results:
+		# combine for md5: include date markers so change in any table affects MD5
+		joined = "\n".join(f"{r['date'] or ''}||" + ";".join(r['off_ranges']) for r in results)
+		current_md5 = hashlib.md5(joined.encode("utf-8")).hexdigest()
+		# For backward compatibility, expose first result in debug prints below
+		off_ranges = results[0]["off_ranges"]
 
 		# Load previous state (md5, timestamp, version) if present
 		prev_md5 = None
@@ -609,27 +643,13 @@ def main() -> None:
 			prev_md5 = None
 			prev_version = 0
 
-		# attempt to extract date from table HTML (rel attribute is often a unix timestamp)
-		soup = BeautifulSoup(table_html_norm, "html.parser")
-		tbl_el = soup.find(class_='discon-fact-table') or soup.find(attrs={"rel": True})
-		date_str = None
-		if tbl_el:
-			rel = tbl_el.get('rel') or tbl_el.get('data-rel')
-			if rel:
-				try:
-					ts = int(rel)
-					# convert UTC timestamp to local timezone-aware datetime
-					date_str = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime('%Y-%m-%d')
-				except Exception:
-					date_str = None
-
+		# use first table's date for human-readable prints (if available)
+		date_str = results[0]['date'] if results and results[0].get('date') else None
 		if date_str:
 			print(f"\nДата: {date_str}")
 
-		# Normalize current ranges as strings and compute md5
+		# Normalize current ranges (first table) as strings for printing/sending
 		off_ranges = [str(r).strip() for r in off_ranges]
-		joined = "\n".join(off_ranges)
-		current_md5 = hashlib.md5(joined.encode('utf-8')).hexdigest()
 
 		print(f"DEBUG off_ranges: {off_ranges}")
 		print(f"DEBUG current_md5: {current_md5!r}")
@@ -637,25 +657,40 @@ def main() -> None:
 		print(f"DEBUG match: {prev_md5 == current_md5}")
 
 		print("\nИнтервалы отключения (Света НЕТ):")
-		if off_ranges:
-			for r in off_ranges:
-				print(f" - {r}")
-		else:
-			print(" - Нет интервалов отключения")
+		for res in results:
+			d = res.get('date') or ''
+			header = f"Дата: {d}" if d else "Дата: -"
+			print(f"\n{header}")
+			ors = res.get('off_ranges') or []
+			if ors:
+				for r in ors:
+					print(f" - {r}")
+			else:
+				print(" - Нет интервалов отключения")
 
 		# Send only if data changed since last run
 		try:
 			print(f"DEBUG: prev_md5: {prev_md5!r}, current_md5: {current_md5!r}")
 			if prev_md5 != current_md5:
 				print("Данные изменились (md5 differ), отправляю email")
-				try:
-					send_off_intervals_via_email(EMAIL_RECIPIENT, off_ranges, date_str)
-				except Exception as e:
-					print(f"Ошибка при отправке email: {e}")
-				# Send Telegram notification
-				body = f"Интервалы отключения:\n" + "\n".join(f" - {r}" for r in off_ranges or ["Нет интервалов отключения"])
-				if date_str:
-					body = f"{date_str}\n{body}"
+				# Email sending disabled by request — comment out to prevent sending
+				# try:
+				# 	send_off_intervals_via_email(EMAIL_RECIPIENT, results=results)
+				# except Exception as e:
+				# 	print(f"Ошибка при отправке email: {e}")
+				print("DEBUG: Email sending is disabled (commented out)")
+				# Send Telegram notification including all dates
+				parts = []
+				for res in results:
+					d = res.get('date') or ''
+					header = f"{d}" if d else "-"
+					parts.append(header)
+					ors = res.get('off_ranges') or []
+					if ors:
+						parts.extend([f" - {r}" for r in ors])
+					else:
+						parts.append(" - Нет интервалов отключения")
+				body = "Интервалы отключения:\n" + "\n".join(parts)
 				print(f"DEBUG: Sending Telegram message: {body}")
 				asyncio.run(send_telegram_notification(body))
 			else:
@@ -673,7 +708,7 @@ def main() -> None:
 					'md5': current_md5,
 					'timestamp': datetime.now(timezone.utc).isoformat(),
 					'version': 1,
-					'data': off_ranges  # store the actual ranges for logging
+					'data': results  # store ranges for all dates
 				}
 				abs_path = os.path.abspath(DEFAULT_STATE_FILE)
 				print(f"DEBUG: Writing to absolute path: {abs_path}")
