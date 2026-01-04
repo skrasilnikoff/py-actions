@@ -630,15 +630,36 @@ def main() -> None:
 
 	# Parse all .discon-fact-table entries (может быть сегодня и завтра)
 	soup_all = BeautifulSoup(table_html, "html.parser")
+	
+	# Parse dates from .dates .date
+	date_map = {}
+	dates_div = soup_all.find("div", class_="dates")
+	if dates_div:
+		date_divs = dates_div.find_all("div", class_="date")
+		for d in date_divs:
+			rel = d.get("rel")
+			span = d.find("span", {"rel": "date"})
+			if span and rel:
+				date_text = span.get_text().strip()  # e.g., "04.01.26"
+				try:
+					day, month, year = date_text.split(".")
+					full_year = "20" + year
+					date_iso = f"{full_year}-{month.zfill(2)}-{day.zfill(2)}"
+					date_map[rel] = date_iso
+				except ValueError:
+					pass
+	
 	table_els = soup_all.select(".discon-fact-table")
 	results = []
 	for tbl in table_els:
 		rel = tbl.get("rel") or tbl.get("data-rel")
-		date_str_tbl = None
-		if rel:
+		date_str_tbl = date_map.get(rel)
+		if not date_str_tbl and rel:
+			# Fallback to timestamp calculation
 			try:
 				ts = int(rel)
-				date_str_tbl = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime('%Y-%m-%d')
+				dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone()
+				date_str_tbl = dt.strftime('%Y-%m-%d')
 			except Exception:
 				date_str_tbl = None
 		tbl_html = _normalize_table(str(tbl))
