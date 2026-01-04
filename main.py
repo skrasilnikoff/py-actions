@@ -86,6 +86,37 @@ def parse_fact_table_to_slots(table_html: str) -> Optional[List[str]]:
 	return slots[:48]
 
 
+def _human_date(date_iso: Optional[str]) -> str:
+	"""Convert ISO 'YYYY-MM-DD' to human-readable 'D Mon YYYY' with Cyrillic month abbrev.
+
+	Example: '2026-12-04' -> '4 Дек 2026'
+	"""
+	if not date_iso:
+		return "-"
+	try:
+		dt = datetime.strptime(date_iso, "%Y-%m-%d")
+		day = dt.day
+		year = dt.year
+		months = [
+			"Янв",
+			"Фев",
+			"Мар",
+			"Апр",
+			"Май",
+			"Июн",
+			"Июл",
+			"Авг",
+			"Сен",
+			"Окт",
+			"Ноя",
+			"Дек",
+		]
+		mon = months[dt.month - 1]
+		return f"{day} {mon} {year}"
+	except Exception:
+		return date_iso
+
+
 def slots_to_ranges(slots: List[str], status: str) -> List[str]:
 	ranges: List[str] = []
 	i = 0
@@ -487,7 +518,7 @@ def send_off_intervals_via_email(
 
 	msg = EmailMessage()
 	msg.set_content(body)
-	subj_date = f" {date_str}" if date_str else ""
+	subj_date = f" {_human_date(date_str)}" if date_str else ""
 	msg["Subject"] = f"Интервалы отключения{subj_date}"
 	msg["From"] = os.environ.get("SMTP_FROM", f"no-reply@{os.uname().nodename}")
 	msg["To"] = recipient
@@ -647,7 +678,7 @@ def main() -> None:
 		# use first table's date for human-readable prints (if available)
 		date_str = results[0]['date'] if results and results[0].get('date') else None
 		if date_str:
-			print(f"\nДата: {date_str}")
+			print(f"\n{_human_date(date_str)}")
 
 		# Normalize current ranges (first table) as strings for printing/sending
 		off_ranges = [str(r).strip() for r in off_ranges]
@@ -663,7 +694,7 @@ def main() -> None:
 			header = f"Дата: {d}" if d else "Дата: -"
 			if idx > 0:
 				print()
-			print(header)
+			print(_human_date(d))
 			ors = res.get('off_ranges') or []
 			if ors:
 				for r in ors:
@@ -686,16 +717,15 @@ def main() -> None:
 				parts = []
 				for idx, res in enumerate(results):
 					d = res.get('date') or ''
-					header = f"{d}" if d else "-"
 					if idx > 0:
 						parts.append("")
-					parts.append(header)
+					parts.append(_human_date(d))
 					ors = res.get('off_ranges') or []
 					if ors:
 						parts.extend([f" - {r}" for r in ors])
 					else:
 						parts.append(" - Нет интервалов отключения")
-				body = "Интервалы отключения:\n\n" + "\n".join(parts)
+				body = "Интервалы отключения:\n" + "\n".join(parts)
 				print(f"DEBUG: Sending Telegram message: {body}")
 				asyncio.run(send_telegram_notification(body))
 			else:
