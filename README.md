@@ -1,6 +1,6 @@
 # DTEK Power Outage Scraper
 
-[![CI](https://github.com/OWNER/REPO/actions/workflows/python-app.yml/badge.svg)](https://github.com/OWNER/REPO/actions)
+CI
 
 Overview
 

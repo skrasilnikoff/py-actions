@@ -1,6 +1,10 @@
 import time
 from typing import List, Optional
 from datetime import datetime, timezone
+try:
+	from zoneinfo import ZoneInfo
+except Exception:
+	ZoneInfo = None
 
 from bs4 import BeautifulSoup
 import os
@@ -679,8 +683,8 @@ def main() -> None:
 		prev_version = 0
 		import os.path as osp
 		abs_state_file = osp.abspath(DEFAULT_STATE_FILE)
-		print(f"DEBUG: Looking for state file at: {abs_state_file}")
-		print(f"DEBUG: File exists: {osp.exists(abs_state_file)}")
+		# print(f"DEBUG: Looking for state file at: {abs_state_file}")
+		# print(f"DEBUG: File exists: {osp.exists(abs_state_file)}")
 		try:
 			with open(DEFAULT_STATE_FILE, 'r', encoding='utf-8') as sf:
 				st = json.load(sf)
@@ -701,10 +705,10 @@ def main() -> None:
 		# Normalize current ranges (first table) as strings for printing/sending
 		off_ranges = [str(r).strip() for r in off_ranges]
 
-		print(f"DEBUG off_ranges: {off_ranges}")
-		print(f"DEBUG current_md5: {current_md5!r}")
-		print(f"DEBUG prev_md5: {prev_md5!r}")
-		print(f"DEBUG match: {prev_md5 == current_md5}")
+		# print(f"DEBUG off_ranges: {off_ranges}")
+		# print(f"DEBUG current_md5: {current_md5!r}")
+		# print(f"DEBUG prev_md5: {prev_md5!r}")
+		# print(f"DEBUG match: {prev_md5 == current_md5}")
 
 		print("\nИнтервалы отключения:\n\n")
 		for idx, res in enumerate(results):
@@ -743,6 +747,7 @@ def main() -> None:
 						parts.extend([f" - {r}" for r in ors])
 					else:
 						parts.append(" - Нет интервалов отключения")
+						
 				body = "Интервалы отключения:\n\n" + "\n".join(parts)
 				print(f"DEBUG: Sending Telegram message: {body}")
 				asyncio.run(send_telegram_notification(body))
