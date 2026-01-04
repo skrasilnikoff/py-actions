@@ -664,16 +664,13 @@ def main() -> None:
 			with open(DEFAULT_STATE_FILE, 'r', encoding='utf-8') as sf:
 				st = json.load(sf)
 				prev_md5 = st.get('md5')
-				prev_version = st.get('version', 0)  # default to 0 for old files
 				print(f"DEBUG: Loaded state from {DEFAULT_STATE_FILE}: md5={prev_md5}")
 		except FileNotFoundError:
 			print(f"DEBUG: State file not found at {DEFAULT_STATE_FILE}")
 			prev_md5 = None
-			prev_version = 0
 		except Exception as e:
 			print(f"DEBUG: Error reading state file: {e}")
 			prev_md5 = None
-			prev_version = 0
 
 		# use first table's date for human-readable prints (if available)
 		date_str = results[0]['date'] if results and results[0].get('date') else None
@@ -688,7 +685,7 @@ def main() -> None:
 		print(f"DEBUG prev_md5: {prev_md5!r}")
 		print(f"DEBUG match: {prev_md5 == current_md5}")
 
-		print("\nИнтервалы отключения (Света НЕТ):")
+		print("\nИнтервалы отключения:\n\n")
 		for idx, res in enumerate(results):
 			d = res.get('date') or ''
 			header = f"Дата: {d}" if d else "Дата: -"
@@ -725,7 +722,7 @@ def main() -> None:
 						parts.extend([f" - {r}" for r in ors])
 					else:
 						parts.append(" - Нет интервалов отключения")
-				body = "Интервалы отключения:\n" + "\n".join(parts)
+				body = "Интервалы отключения:\n\n" + "\n".join(parts)
 				print(f"DEBUG: Sending Telegram message: {body}")
 				asyncio.run(send_telegram_notification(body))
 			else:
