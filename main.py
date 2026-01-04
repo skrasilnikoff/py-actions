@@ -1,6 +1,6 @@
 import time
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 try:
 	from zoneinfo import ZoneInfo
 except Exception:
@@ -644,14 +644,22 @@ def main() -> None:
 			rel = d.get("rel")
 			span = d.find("span", {"rel": "date"})
 			if span and rel:
-				date_text = span.get_text().strip()  # e.g., "04.01.26"
-				try:
-					day, month, year = date_text.split(".")
-					full_year = "20" + year
-					date_iso = f"{full_year}-{month.zfill(2)}-{day.zfill(2)}"
-					date_map[rel] = date_iso
-				except ValueError:
-					pass
+				date_text = span.get_text().strip()  # e.g., "04.01.26" or "04.01.2026"
+				parts = date_text.split(".")
+				if len(parts) == 3:
+					day, month, year = parts
+					year = year.strip()
+					# support two-digit years (assume 2000s) and four-digit years
+					if len(year) == 2:
+						full_year = "20" + year
+					else:
+						full_year = year
+					try:
+						date_iso = f"{int(full_year):04d}-{int(month):02d}-{int(day):02d}"
+						date_map[rel] = date_iso
+					except Exception:
+						# ignore malformed date parts
+						pass
 	
 	table_els = soup_all.select(".discon-fact-table")
 	results = []
@@ -659,11 +667,19 @@ def main() -> None:
 		rel = tbl.get("rel") or tbl.get("data-rel")
 		date_str_tbl = date_map.get(rel)
 		if not date_str_tbl and rel:
-			# Fallback to timestamp calculation
+			# Fallback to timestamp calculation: convert UTC timestamp -> Europe/Kyiv
 			try:
 				ts = int(rel)
-				dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone()
-				date_str_tbl = dt.strftime('%Y-%m-%d')
+				# normalize milliseconds -> seconds
+				if ts > 10 ** 12:
+					ts = ts // 1000
+				dt_utc = datetime.fromtimestamp(ts, tz=timezone.utc)
+				if ZoneInfo:
+					kyiv_tz = ZoneInfo("Europe/Kyiv")
+				else:
+					kyiv_tz = timezone(timedelta(hours=2))
+				dt_local = dt_utc.astimezone(kyiv_tz)
+				date_str_tbl = dt_local.strftime('%Y-%m-%d')
 			except Exception:
 				date_str_tbl = None
 		tbl_html = _normalize_table(str(tbl))
