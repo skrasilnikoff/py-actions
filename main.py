@@ -465,10 +465,11 @@ def send_off_intervals_via_email(
 	"""
 	lines = ["Интервалы отключения:"]
 	if results:
-		for res in results:
+		for idx, res in enumerate(results):
 			d = res.get('date') or ''
 			header = f"Дата: {d}" if d else "Дата: -"
-			lines.append("")
+			if idx > 0:
+				lines.append("")
 			lines.append(header)
 			ors = res.get('off_ranges') or []
 			if ors:
@@ -657,10 +658,12 @@ def main() -> None:
 		print(f"DEBUG match: {prev_md5 == current_md5}")
 
 		print("\nИнтервалы отключения (Света НЕТ):")
-		for res in results:
+		for idx, res in enumerate(results):
 			d = res.get('date') or ''
 			header = f"Дата: {d}" if d else "Дата: -"
-			print(f"\n{header}")
+			if idx > 0:
+				print()
+			print(header)
 			ors = res.get('off_ranges') or []
 			if ors:
 				for r in ors:
@@ -681,16 +684,18 @@ def main() -> None:
 				print("DEBUG: Email sending is disabled (commented out)")
 				# Send Telegram notification including all dates
 				parts = []
-				for res in results:
+				for idx, res in enumerate(results):
 					d = res.get('date') or ''
 					header = f"{d}" if d else "-"
+					if idx > 0:
+						parts.append("")
 					parts.append(header)
 					ors = res.get('off_ranges') or []
 					if ors:
 						parts.extend([f" - {r}" for r in ors])
 					else:
 						parts.append(" - Нет интервалов отключения")
-				body = "Интервалы отключения:\n" + "\n".join(parts)
+				body = "Интервалы отключения:\n\n" + "\n".join(parts)
 				print(f"DEBUG: Sending Telegram message: {body}")
 				asyncio.run(send_telegram_notification(body))
 			else:
