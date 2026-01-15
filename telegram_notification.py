@@ -42,26 +42,45 @@ async def send_telegram_notification(message: str) -> None:
         print("TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set, skipping Telegram notification")
         return
 
-    # Normalize chat_id to a simple scalar (int or str) if it comes from JSON
-    try:
-        if isinstance(chat_id, list):
-            print("DEBUG: chat_id is a list; using first element")
-            chat_id = chat_id[0] if chat_id else None
-        elif isinstance(chat_id, dict):
-            print("DEBUG: chat_id is a dict; trying common keys")
-            for k in ("chat_id", "id", "telegram_chat_id"):
-                if k in chat_id:
-                    chat_id = chat_id[k]
-                    break
+    # Normalize chat_id into a list of ids (support comma-separated string)
+    def _parse_chat_ids(raw):
+        ids = []
+        try:
+            if raw is None:
+                return []
+            # bytes -> str
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8")
+            # If it's already a list, use it
+            if isinstance(raw, list):
+                ids = raw
+            # If it's a dict, try common keys
+            elif isinstance(raw, dict):
+                for k in ("chat_id", "id", "telegram_chat_id"):
+                    if k in raw:
+                        ids = [raw[k]]
+                        break
+                else:
+                    ids = [str(raw)]
             else:
-                chat_id = str(chat_id)
-        if isinstance(chat_id, bytes):
-            chat_id = chat_id.decode("utf-8")
-    except Exception as e:
-        print(f"DEBUG: Error normalizing chat_id: {e}")
-        traceback.print_exc()
+                # Treat as string and split by comma
+                raw_str = str(raw)
+                parts = [p.strip() for p in raw_str.split(",") if p.strip()]
+                ids = parts
+        except Exception as e:
+            print(f"DEBUG: Error parsing chat ids: {e}")
+            traceback.print_exc()
+        # Normalize each id to int when possible
+        norm = []
+        for item in ids:
+            try:
+                norm.append(int(item))
+            except Exception:
+                norm.append(item)
+        return norm
 
-    print(f"DEBUG: Final chat_id type={type(chat_id)}, preview={(str(chat_id)[:60] + '...') if chat_id else 'None'}")
+    chat_ids = _parse_chat_ids(chat_id)
+    print(f"DEBUG: Final chat_ids={chat_ids}")
 
     try:
         bot = Bot(token=token)
@@ -70,9 +89,11 @@ async def send_telegram_notification(message: str) -> None:
         traceback.print_exc()
         return
 
-    try:
-        await bot.send_message(chat_id=chat_id, text=message)
-        print("DEBUG: Telegram message sent")
-    except Exception as e:
-        print(f"DEBUG: Failed to send Telegram message: {e}")
-        traceback.print_exc()
+    # Send to each chat id
+    for cid in chat_ids:
+        try:
+            await bot.send_message(chat_id=cid, text=message)
+            print(f"DEBUG: Telegram message sent to {cid}")
+        except Exception as e:
+            print(f"DEBUG: Failed to send Telegram message to {cid}: {e}")
+            traceback.print_exc()
